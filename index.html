@@ -235,11 +235,19 @@ function loadRef(el) {
   reader.onload = () => {
     const db = {};
     String(reader.result).split(/\r?\n/).forEach(line => {
-      if (!line || line.startsWith('sep=') || line.startsWith('Код;')) return;
-      const p = line.split(';');
-      if (p.length < 6) return;
-      const key = normalize(p[0]);
-      db[key] = { own: p[5].trim().toUpperCase() === 'ДА', st: (p[3] || '').trim() };
+      if (!line) return;
+      if (line.includes('\t')) {
+        // основной формат: код TAB статус TAB наш(1/0) TAB товар
+        const p = line.split('\t');
+        if (p.length < 3) return;
+        db[normalize(p[0])] = { own: p[2].trim() === '1', st: (p[1] || '').trim() };
+      } else {
+        // запасной формат: CSV с ';' (коды с ';' внутри могут не совпасть)
+        if (line.startsWith('sep=') || line.startsWith('Код;')) return;
+        const p = line.split(';');
+        if (p.length < 6) return;
+        db[normalize(p[0])] = { own: p[5].trim().toUpperCase() === 'ДА', st: (p[3] || '').trim() };
+      }
     });
     const n = Object.keys(db).length;
     if (!n) { alert('В файле не нашлось кодов. Нужен CSV из выгрузки ЧЗ (все_коды_ЧЗ.csv).'); el.value = ''; return; }
