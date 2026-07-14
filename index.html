@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Сканер КИЗ — контроль дублей</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -120,8 +121,7 @@
     <button class="danger" onclick="clearToken()">✕ Очистить токен</button>
     <span id="helperDot">⚪ помощник не проверен</span>
     <a href="instrukciya.html" target="_blank" style="color:#60a5fa;font-size:13px;white-space:nowrap">📖 Инструкция</a>
-    <a href="cz-helper.ps1" download style="color:#60a5fa;font-size:13px;white-space:nowrap">⬇ помощник</a>
-    <a href="start-cz-helper.bat" download style="color:#60a5fa;font-size:13px;white-space:nowrap">⬇ запуск помощника</a>
+    <a href="start-cz-helper.bat" download style="color:#60a5fa;font-size:13px;white-space:nowrap">⬇ Скачать помощник (1 файл)</a>
   </div>
 
   <div id="status">
@@ -146,7 +146,6 @@
     <button onclick="document.getElementById('importFile').click()">⬆ Загрузить базу из копии</button>
     <input type="file" id="importFile" accept=".json,.txt" style="display:none" onchange="importBase(this)">
     <button class="danger" onclick="clearJournal()">Очистить журнал (база кодов останется)</button>
-    <button class="danger" onclick="wipeAll()">⚠ Полный сброс</button>
   </div>
 
   <div class="log-wrap">
@@ -157,6 +156,10 @@
         <tbody id="log"></tbody>
       </table>
     </div>
+  </div>
+
+  <div style="margin-top:56px;padding-top:14px;border-top:1px solid #1b1f27;text-align:right">
+    <a href="#" onclick="wipeAll();return false" style="color:#3a4150;font-size:12px;text-decoration:none">Очистить все данные в системе…</a>
   </div>
 </div>
 
@@ -463,8 +466,9 @@ function clearJournal() {
 }
 
 function wipeAll() {
-  if (!confirm('ПОЛНЫЙ СБРОС: будут удалены и журнал, и ВСЯ база кодов за все дни. Дубли с прошлых дней перестанут определяться. Продолжить?')) return;
-  if (!confirm('Точно? Рекомендуем сначала нажать «Резервная копия базы». Удалить всё безвозвратно?')) return;
+  const answer = prompt('ОЧИСТКА ВСЕХ ДАННЫХ В СИСТЕМЕ.\n\nБудут удалены журнал и ВСЯ база кодов за все дни — дубли с прошлых дней перестанут определяться.\nСначала сделайте «Резервную копию базы»!\n\nЧтобы подтвердить, введите слово: УДАЛИТЬ');
+  if (answer === null) return;
+  if (answer.trim().toUpperCase() !== 'УДАЛИТЬ') { alert('Слово не совпало. Данные не тронуты.'); return; }
   scans = []; base = {};
   localStorage.removeItem(LS_KEY);
   localStorage.removeItem(LS_BASE);
