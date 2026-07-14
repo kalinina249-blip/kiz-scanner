@@ -6,10 +6,19 @@
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:8787/")
 try { $listener.Start() } catch {
-    Write-Host "ERROR: cannot start on port 8787. Maybe helper is already running." -ForegroundColor Red
-    Write-Host $_.Exception.Message
-    Read-Host "Press Enter to close"
-    exit 1
+    try {
+        $null = Invoke-RestMethod "http://localhost:8787/ping" -TimeoutSec 3
+        Write-Host ""
+        Write-Host "===============================================" -ForegroundColor Green
+        Write-Host "  POMOSHCHNIK UZHE ZAPUSHCHEN v drugom okne." -ForegroundColor Green
+        Write-Host "  Vsyo rabotaet! Eto okno mozhno zakryt." -ForegroundColor Green
+        Write-Host "===============================================" -ForegroundColor Green
+    } catch {
+        Write-Host "ERROR: port 8787 zanyat drugoy programmoy." -ForegroundColor Red
+        Write-Host $_.Exception.Message
+    }
+    Read-Host "Nazhmite Enter chtoby zakryt"
+    exit 0
 }
 
 Write-Host ""
