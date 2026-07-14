@@ -266,7 +266,7 @@ async function checkCZ(keys) {
   if (!token) return null;
   try {
     const r = await fetch(HELPER + '/check', {
-      method: 'POST',
+      method: 'POST', targetAddressSpace: 'loopback',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, codes: keys })
     });
@@ -375,7 +375,7 @@ function clearToken() {
 async function pingHelper() {
   const dot = document.getElementById('helperDot');
   try {
-    const r = await fetch(HELPER + '/ping');
+    const r = await fetch(HELPER + '/ping', { targetAddressSpace: 'loopback' });
     await r.json();
     dot.textContent = '🟢 помощник работает';
   } catch(e) {
