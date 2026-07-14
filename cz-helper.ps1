@@ -29,8 +29,8 @@ try { $listener.Start() } catch {
 
 # refresh the page from the site (fallback: cached copy in TEMP)
 try {
-    Invoke-WebRequest "$siteBase/index.html" -OutFile $pageCache -UseBasicParsing -TimeoutSec 20
-    Invoke-WebRequest "$siteBase/favicon.svg" -OutFile $favCache -UseBasicParsing -TimeoutSec 20
+    Invoke-WebRequest "$siteBase/index.html?v=$(Get-Random)" -OutFile $pageCache -UseBasicParsing -TimeoutSec 20
+    Invoke-WebRequest "$siteBase/favicon.svg?v=$(Get-Random)" -OutFile $favCache -UseBasicParsing -TimeoutSec 20
     Write-Host "Stranica programmy obnovlena iz interneta." -ForegroundColor Gray
 } catch {
     if (Test-Path $pageCache) { Write-Host "Net interneta - ispolzuyu sohranennuyu kopiyu stranicy." -ForegroundColor Yellow }
