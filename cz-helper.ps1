@@ -26,6 +26,8 @@ while ($listener.IsListening) {
     $res.Headers.Add("Access-Control-Allow-Origin", "*")
     $res.Headers.Add("Access-Control-Allow-Headers", "Content-Type")
     $res.Headers.Add("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+    $res.Headers.Add("Access-Control-Allow-Private-Network", "true")
+    $res.Headers.Add("Access-Control-Max-Age", "600")
     $out = ""
     try {
         if ($req.HttpMethod -eq "OPTIONS") {
