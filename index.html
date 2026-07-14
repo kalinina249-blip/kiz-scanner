@@ -120,8 +120,8 @@
     <button onclick="saveToken()">Сохранить</button>
     <button class="danger" onclick="clearToken()">✕ Очистить токен</button>
     <span id="helperDot">⚪ помощник не проверен</span>
-    <a href="instrukciya.html" target="_blank" style="color:#60a5fa;font-size:13px;white-space:nowrap">📖 Инструкция</a>
-    <a href="start-cz-helper.bat" download style="color:#60a5fa;font-size:13px;white-space:nowrap">⬇ Скачать помощник (1 файл)</a>
+    <a href="https://kalinina249-blip.github.io/kiz-scanner/instrukciya.html" target="_blank" style="color:#60a5fa;font-size:13px;white-space:nowrap">📖 Инструкция</a>
+    <a href="https://kalinina249-blip.github.io/kiz-scanner/start-cz-helper.bat" download style="color:#60a5fa;font-size:13px;white-space:nowrap">⬇ Скачать помощник (1 файл)</a>
   </div>
 
   <div id="status">
@@ -179,6 +179,38 @@ let migrated = false;
 scans.forEach(s => { if (!base[s.key]) { base[s.key] = s.time; migrated = true; } });
 if (migrated) localStorage.setItem(LS_BASE, JSON.stringify(base));
 
+// Защита от русской раскладки: сканер печатает то, что «нажимает», и при включённом RU
+// вместо латиницы выходит кириллица. Переводим символы обратно по расположению клавиш,
+// чтобы один и тот же киз давал одинаковый код при любой раскладке.
+const RU2EN = {
+  'й':'q','ц':'w','у':'e','к':'r','е':'t','н':'y','г':'u','ш':'i','щ':'o','з':'p','х':'[','ъ':']',
+  'ф':'a','ы':'s','в':'d','а':'f','п':'g','р':'h','о':'j','л':'k','д':'l','ж':';','э':"'",
+  'я':'z','ч':'x','с':'c','м':'v','и':'b','т':'n','ь':'m','б':',','ю':'.','ё':'`',
+  'Й':'Q','Ц':'W','У':'E','К':'R','Е':'T','Н':'Y','Г':'U','Ш':'I','Щ':'O','З':'P','Х':'{','Ъ':'}',
+  'Ф':'A','Ы':'S','В':'D','А':'F','П':'G','Р':'H','О':'J','Л':'K','Д':'L','Ж':':','Э':'"',
+  'Я':'Z','Ч':'X','С':'C','М':'V','И':'B','Т':'N','Ь':'M','Б':'<','Ю':'>','Ё':'~',
+  '"':'@','№':'#',';':'$',':':'^','?':'&','.':'/',',':'?'
+};
+function translit(s) {
+  if (!/[А-Яа-яЁё№]/.test(s)) return s; // латиница — не трогаем
+  return s.split('').map(ch => RU2EN[ch] !== undefined ? RU2EN[ch] : ch).join('');
+}
+
+// Миграция: чиним коды, ранее отсканированные с русской раскладкой
+let fixedLayout = false;
+const fixedBase = {};
+Object.keys(base).forEach(k => {
+  const nk = translit(k);
+  if (nk !== k) fixedLayout = true;
+  if (!fixedBase[nk]) fixedBase[nk] = base[k];
+});
+base = fixedBase;
+scans.forEach(s => { const nk = translit(s.key); if (nk !== s.key) { s.key = nk; fixedLayout = true; } });
+if (fixedLayout) {
+  localStorage.setItem(LS_BASE, JSON.stringify(base));
+  localStorage.setItem(LS_KEY, JSON.stringify(scans));
+}
+
 const input = document.getElementById('scan');
 const statusEl = document.getElementById('status');
 const tokenInput = document.getElementById('token');
@@ -204,7 +236,7 @@ function stInfo(code) {
 
 // Ключ уникальности из КИЗ: GTIN (AI 01) + серийный номер (AI 21)
 function normalize(raw) {
-  let s = raw.replace(/[\x1d]/g, '|').trim();
+  let s = translit(raw.replace(/[\x1d]/g, '|').trim());
   const m = s.match(/01(\d{14})21([^|]{1,20})/);
   if (m) return '01' + m[1] + '21' + m[2];
   return s;
