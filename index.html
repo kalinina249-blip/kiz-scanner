@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Сканер КИЗ — контроль дублей</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: #0f1115;
+    color: #e8eaed;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .sub { color: #9aa0a6; font-size: 13px; margin-bottom: 16px; }
+
+  /* Настройки проверки ЧЗ */
+  .settings {
+    background: #1b1f27; border: 1px solid #2a2f3a; border-radius: 12px;
+    padding: 12px 16px; margin-bottom: 16px;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  }
+  .settings label { font-size: 13px; color: #9aa0a6; white-space: nowrap; }
+  .settings input {
+    flex: 1; min-width: 220px; padding: 8px 12px; border-radius: 8px;
+    border: 1px solid #2a2f3a; background: #12151b; color: #e8eaed;
+    font-family: Consolas, monospace; font-size: 12px;
+  }
+  #helperDot { font-size: 13px; white-space: nowrap; }
+
+  /* Большой статус-баннер */
+  #status {
+    border-radius: 16px;
+    padding: 32px 24px;
+    text-align: center;
+    margin-bottom: 20px;
+    transition: background .15s;
+    background: #1b1f27;
+    border: 2px solid #2a2f3a;
+  }
+  #status .big { font-size: 52px; font-weight: 800; letter-spacing: 1px; }
+  #status .cz { font-size: 22px; font-weight: 600; margin-top: 8px; color: #9aa0a6; }
+  #status .code { font-size: 14px; color: #9aa0a6; margin-top: 10px; word-break: break-all; font-family: Consolas, monospace; }
+  #status.ok { background: #0e2b18; border-color: #1e7e34; }
+  #status.ok .big { color: #4ade80; }
+  #status.warn { background: #33270a; border-color: #b45309; }
+  #status.warn .big { color: #fbbf24; }
+  #status.dup { background: #3b0a0a; border-color: #dc2626; animation: flash .25s 4 alternate; }
+  #status.dup .big { color: #ff4d4d; }
+  #status.dup .cz { color: #ffb4b4; }
+  @keyframes flash { from { background: #3b0a0a; } to { background: #7f1d1d; } }
+
+  /* Поле сканера */
+  #scan {
+    width: 100%;
+    font-size: 22px;
+    padding: 16px 18px;
+    border-radius: 12px;
+    border: 2px solid #3b82f6;
+    background: #161a22;
+    color: #e8eaed;
+    outline: none;
+    margin-bottom: 20px;
+    font-family: Consolas, monospace;
+  }
+  #scan::placeholder { color: #5f6672; font-family: "Segoe UI", sans-serif; }
+
+  /* Счётчики */
+  .stats { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .stat {
+    flex: 1; min-width: 130px;
+    background: #1b1f27; border: 1px solid #2a2f3a;
+    border-radius: 12px; padding: 14px 18px;
+  }
+  .stat .n { font-size: 32px; font-weight: 700; }
+  .stat .l { font-size: 12px; color: #9aa0a6; margin-top: 2px; }
+  .stat.red .n { color: #ff4d4d; }
+  .stat.green .n { color: #4ade80; }
+  .stat.blue .n { color: #60a5fa; }
+
+  /* Кнопки */
+  .actions { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  button {
+    padding: 10px 18px; border-radius: 10px; border: 1px solid #2a2f3a;
+    background: #1b1f27; color: #e8eaed; font-size: 14px; cursor: pointer;
+  }
+  button:hover { background: #262c38; }
+  button.danger { border-color: #7f1d1d; color: #ff8888; }
+  button.danger:hover { background: #3b0a0a; }
+  button.primary { border-color: #1d4ed8; }
+
+  /* Журнал */
+  .log-wrap { background: #1b1f27; border: 1px solid #2a2f3a; border-radius: 12px; overflow: hidden; }
+  .log-head { padding: 12px 18px; font-size: 13px; color: #9aa0a6; border-bottom: 1px solid #2a2f3a; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 9px 14px; text-align: left; border-bottom: 1px solid #232833; }
+  th { color: #9aa0a6; font-weight: 500; font-size: 12px; }
+  td.code { font-family: Consolas, monospace; word-break: break-all; max-width: 380px; }
+  tr.dup td { background: #3b0a0a; color: #ffb4b4; }
+  tr.dup td:first-child { color: #ff4d4d; font-weight: 700; }
+  td.st-ok { color: #4ade80; }
+  td.st-bad { color: #ff4d4d; font-weight: 700; }
+  td.st-warn { color: #fbbf24; }
+  td.st-none { color: #5f6672; }
+  .scroll { max-height: 420px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Сканер КИЗ — контроль дублей + статус в Честном знаке</h1>
+  <div class="sub">Дубли ищутся по всей базе за все дни — даже если код сканировали неделю назад. База хранится на этом компьютере и не стирается при закрытии страницы.</div>
+
+  <div class="settings">
+    <label>Токен ЧЗ:</label>
+    <input id="token" type="password" placeholder="Вставьте токен для проверки статусов (можно оставить пустым — тогда только ловля дублей)">
+    <button onclick="saveToken()">Сохранить</button>
+    <button class="danger" onclick="clearToken()">✕ Очистить токен</button>
+    <span id="helperDot">⚪ помощник не проверен</span>
+    <a href="instrukciya.html" target="_blank" style="color:#60a5fa;font-size:13px;white-space:nowrap">📖 Инструкция</a>
+    <a href="cz-helper.ps1" download style="color:#60a5fa;font-size:13px;white-space:nowrap">⬇ помощник</a>
+    <a href="start-cz-helper.bat" download style="color:#60a5fa;font-size:13px;white-space:nowrap">⬇ запуск помощника</a>
+  </div>
+
+  <div id="status">
+    <div class="big">ГОТОВ К СКАНИРОВАНИЮ</div>
+    <div class="cz"></div>
+    <div class="code">Отсканируйте первый код</div>
+  </div>
+
+  <input id="scan" autocomplete="off" placeholder="Поле сканера — курсор должен быть здесь" autofocus>
+
+  <div class="stats">
+    <div class="stat blue"><div class="n" id="baseCount">0</div><div class="l">Кодов в базе (за все дни)</div></div>
+    <div class="stat"><div class="n" id="total">0</div><div class="l">Сканов в журнале</div></div>
+    <div class="stat red"><div class="n" id="dups">0</div><div class="l">Дублей поймано</div></div>
+    <div class="stat red"><div class="n" id="retired">0</div><div class="l">Выведено из оборота</div></div>
+  </div>
+
+  <div class="actions">
+    <button class="primary" onclick="recheckAll()">↻ Проверить статусы всех кодов</button>
+    <button onclick="exportCSV()">⬇ Журнал (CSV для Excel)</button>
+    <button onclick="exportBase()">⬇ Резервная копия базы</button>
+    <button onclick="document.getElementById('importFile').click()">⬆ Загрузить базу из копии</button>
+    <input type="file" id="importFile" accept=".json,.txt" style="display:none" onchange="importBase(this)">
+    <button class="danger" onclick="clearJournal()">Очистить журнал (база кодов останется)</button>
+    <button class="danger" onclick="wipeAll()">⚠ Полный сброс</button>
+  </div>
+
+  <div class="log-wrap">
+    <div class="log-head">Журнал сканирования (новые сверху)</div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Дубль?</th><th>Статус в ЧЗ</th><th>Время скана</th><th>Код (GTIN + серийник)</th></tr></thead>
+        <tbody id="log"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const LS_KEY = 'kiz-scans-v1';     // журнал сканов (последние сканы, для экрана и CSV)
+const LS_BASE = 'kiz-base-v1';     // ПОСТОЯННАЯ база: код -> дата первого скана. Не чистится кнопкой "Очистить журнал"
+const LS_TOKEN = 'kiz-cz-token';
+const HELPER = 'http://localhost:8787';
+
+let scans = [];
+let base = {};
+try { scans = JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch(e) { scans = []; }
+try { base = JSON.parse(localStorage.getItem(LS_BASE)) || {}; } catch(e) { base = {}; }
+
+// Миграция: коды из старого журнала переносим в постоянную базу
+let migrated = false;
+scans.forEach(s => { if (!base[s.key]) { base[s.key] = s.time; migrated = true; } });
+if (migrated) localStorage.setItem(LS_BASE, JSON.stringify(base));
+
+const input = document.getElementById('scan');
+const statusEl = document.getElementById('status');
+const tokenInput = document.getElementById('token');
+tokenInput.value = localStorage.getItem(LS_TOKEN) || '';
+
+// Человеческие названия статусов True API
+const ST = {
+  INTRODUCED:  { t: 'в обороте', cls: 'st-ok', bad: false },
+  RETIRED:     { t: '⛔ ВЫВЕДЕН из оборота', cls: 'st-bad', bad: true },
+  WRITTEN_OFF: { t: '⛔ СПИСАН', cls: 'st-bad', bad: true },
+  WITHDRAWN:   { t: '⛔ выбыл', cls: 'st-bad', bad: true },
+  APPLIED:     { t: 'нанесён, не введён в оборот', cls: 'st-warn', bad: false },
+  EMITTED:     { t: 'эмитирован, не введён', cls: 'st-warn', bad: false },
+  DISAGGREGATED:{ t: 'расформирован', cls: 'st-warn', bad: false }
+};
+function stInfo(code) {
+  if (!code) return { t: '—', cls: 'st-none', bad: false };
+  if (code === 'OFFLINE') return { t: 'нет связи с помощником', cls: 'st-none', bad: false };
+  if (code === 'AUTH') return { t: 'токен не принят (обновите)', cls: 'st-warn', bad: false };
+  if (code === 'NOT_FOUND') return { t: 'код не найден в ЧЗ', cls: 'st-warn', bad: false };
+  return ST[code] || { t: code, cls: 'st-warn', bad: false };
+}
+
+// Ключ уникальности из КИЗ: GTIN (AI 01) + серийный номер (AI 21)
+function normalize(raw) {
+  let s = raw.replace(/[\x1d]/g, '|').trim();
+  const m = s.match(/01(\d{14})21([^|]{1,20})/);
+  if (m) return '01' + m[1] + '21' + m[2];
+  return s;
+}
+
+function beep(kind) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const play = (freq, t0, dur) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = freq; g.gain.value = 0.3;
+      o.start(ctx.currentTime + t0); o.stop(ctx.currentTime + t0 + dur);
+    };
+    if (kind === 'bad') { play(220, 0, .25); play(220, .3, .25); play(220, .6, .4); }
+    else if (kind === 'warn') { play(440, 0, .2); play(440, .25, .2); }
+    else { play(880, 0, .12); }
+  } catch(e) {}
+}
+
+function save() {
+  // Журнал не даём разрастаться бесконечно — храним последние 20000 сканов.
+  // База кодов (LS_BASE) при этом хранит ВСЕ коды за все дни.
+  if (scans.length > 20000) scans = scans.slice(-20000);
+  localStorage.setItem(LS_KEY, JSON.stringify(scans));
+}
+function saveBase() { localStorage.setItem(LS_BASE, JSON.stringify(base)); }
+
+function render() {
+  const dups = scans.filter(s => s.dup).length;
+  const retired = new Set(scans.filter(s => stInfo(s.st).bad).map(s => s.key)).size;
+  document.getElementById('baseCount').textContent = Object.keys(base).length;
+  document.getElementById('total').textContent = scans.length;
+  document.getElementById('dups').textContent = dups;
+  document.getElementById('retired').textContent = retired;
+
+  const rows = scans.slice().reverse().slice(0, 300).map(s => {
+    const st = stInfo(s.st);
+    const dupNote = s.dup ? `⛔ ДУБЛЬ (впервые: ${s.first || '?'})` : '✓';
+    return `<tr class="${s.dup ? 'dup' : ''}">
+       <td>${dupNote}</td>
+       <td class="${st.cls}">${st.t}</td>
+       <td>${s.time}</td>
+       <td class="code">${s.key}</td>
+     </tr>`;
+  }).join('');
+  document.getElementById('log').innerHTML = rows;
+}
+
+function setBanner(cls, big, cz, code) {
+  statusEl.className = cls;
+  statusEl.querySelector('.big').textContent = big;
+  statusEl.querySelector('.cz').textContent = cz || '';
+  statusEl.querySelector('.code').textContent = code || '';
+}
+
+async function checkCZ(keys) {
+  const token = (localStorage.getItem(LS_TOKEN) || '').trim();
+  if (!token) return null;
+  try {
+    const r = await fetch(HELPER + '/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, codes: keys })
+    });
+    const j = await r.json();
+    if (j && j.error) {
+      if (j.http === 401 || j.http === 403) return { authError: true };
+      return null;
+    }
+    const map = {};
+    (Array.isArray(j) ? j : []).forEach(item => {
+      const ci = item.cisInfo || item;
+      const k = ci.requestedCis || ci.cis;
+      if (k) map[normalize(k)] = ci.status || 'NOT_FOUND';
+    });
+    return { map };
+  } catch(e) {
+    return { offline: true };
+  }
+}
+
+async function onScan(raw) {
+  if (!raw.trim()) return;
+  const key = normalize(raw);
+  const now = new Date();
+  const time = now.toLocaleDateString('ru-RU') + ' ' + now.toLocaleTimeString('ru-RU');
+
+  // Дубль = код уже есть в ПОСТОЯННОЙ базе (за любой день)
+  const firstSeen = base[key];
+  const isDup = firstSeen !== undefined;
+  if (!isDup) { base[key] = time; saveBase(); }
+
+  // Статус из кэша журнала, если уже проверяли
+  const cached = scans.find(s => s.key === key && s.st && !['OFFLINE','AUTH'].includes(s.st));
+  const rec = { key, time, dup: isDup, first: firstSeen || time, st: cached ? cached.st : null };
+  scans.push(rec);
+  save();
+
+  if (isDup) {
+    setBanner('dup', '⛔ ДУБЛЬ! ОТЛОЖИТЬ', 'этот код уже сканировали: ' + firstSeen, key);
+    beep('bad');
+    render();
+    return;
+  }
+
+  // Проверка статуса в ЧЗ
+  let st = rec.st;
+  if (!st) {
+    const res = await checkCZ([key]);
+    if (res === null) st = null;                    // токена нет — работаем без проверки
+    else if (res.offline) st = 'OFFLINE';
+    else if (res.authError) st = 'AUTH';
+    else st = res.map[key] || 'NOT_FOUND';
+    rec.st = st;
+    save();
+  }
+
+  const info = stInfo(st);
+  if (info.bad) {
+    setBanner('dup', '⛔ КОД ВЫВЕДЕН — ДУБЛЬ!', 'в Честном знаке: ' + info.t.replace('⛔ ', '') + ' — товар на переклейку', key);
+    beep('bad');
+  } else if (st === 'INTRODUCED') {
+    setBanner('ok', '✓ В ОБОРОТЕ', 'код новый, в Честном знаке всё чисто', key);
+    beep('ok');
+  } else if (st === 'OFFLINE' || st === 'AUTH') {
+    setBanner('warn', '✓ КОД НОВЫЙ', 'статус в ЧЗ не проверен: ' + info.t, key);
+    beep('warn');
+  } else if (st) {
+    setBanner('warn', '✓ КОД НОВЫЙ', 'статус в ЧЗ: ' + info.t, key);
+    beep('warn');
+  } else {
+    setBanner('ok', '✓ КОД НОВЫЙ', 'проверка ЧЗ выключена (нет токена)', key);
+    beep('ok');
+  }
+  render();
+}
+
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    onScan(input.value);
+    input.value = '';
+    e.preventDefault();
+  }
+});
+
+document.addEventListener('click', e => {
+  if (e.target.closest('.settings') || e.target.tagName === 'BUTTON') return;
+  setTimeout(() => input.focus(), 50);
+});
+setInterval(() => {
+  const a = document.activeElement;
+  if (a !== input && a !== tokenInput && a.tagName !== 'BUTTON' && a.tagName !== 'INPUT') input.focus();
+}, 2000);
+
+function saveToken() {
+  localStorage.setItem(LS_TOKEN, tokenInput.value.trim());
+  pingHelper();
+  input.focus();
+}
+
+function clearToken() {
+  tokenInput.value = '';
+  localStorage.removeItem(LS_TOKEN);
+  tokenInput.focus();
+}
+
+async function pingHelper() {
+  const dot = document.getElementById('helperDot');
+  try {
+    const r = await fetch(HELPER + '/ping');
+    await r.json();
+    dot.textContent = '🟢 помощник работает';
+  } catch(e) {
+    dot.textContent = '🔴 помощник не запущен (start-cz-helper.bat)';
+  }
+}
+pingHelper();
+setInterval(pingHelper, 30000);
+
+// Перепроверить статусы всех кодов из базы (пачками по 100)
+async function recheckAll() {
+  const keys = Object.keys(base);
+  if (!keys.length) return;
+  const token = (localStorage.getItem(LS_TOKEN) || '').trim();
+  if (!token) { alert('Сначала вставьте токен ЧЗ и нажмите «Сохранить».'); return; }
+  setBanner('warn', 'ПРОВЕРЯЮ СТАТУСЫ…', `кодов: ${keys.length}`, '');
+  const statuses = {};
+  for (let i = 0; i < keys.length; i += 100) {
+    const batch = keys.slice(i, i + 100);
+    const res = await checkCZ(batch);
+    if (!res || res.offline) { setBanner('warn', 'НЕТ СВЯЗИ С ПОМОЩНИКОМ', 'запустите start-cz-helper.bat', ''); return; }
+    if (res.authError) { setBanner('warn', 'ТОКЕН НЕ ПРИНЯТ', 'обновите токен ЧЗ', ''); return; }
+    batch.forEach(k => { statuses[k] = res.map[k] || 'NOT_FOUND'; });
+    setBanner('warn', 'ПРОВЕРЯЮ СТАТУСЫ…', `${Math.min(i + 100, keys.length)} из ${keys.length}`, '');
+  }
+  scans.forEach(s => { if (statuses[s.key] !== undefined) s.st = statuses[s.key]; });
+  save();
+  const bad = Object.keys(statuses).filter(k => stInfo(statuses[k]).bad);
+  if (bad.length) {
+    setBanner('dup', `⛔ ВЫВЕДЕННЫХ КОДОВ: ${bad.length}`, 'список — в файле, который сейчас скачается', '');
+    let csv = '﻿Код;Статус;Первый скан\n';
+    bad.forEach(k => { csv += `${k};${stInfo(statuses[k]).t.replace('⛔ ','')};${base[k]}\n`; });
+    download(csv, 'выведенные_из_оборота.csv', 'text/csv');
+    beep('bad');
+  } else {
+    setBanner('ok', '✓ ВСЕ КОДЫ ЧИСТЫЕ', `проверено: ${keys.length}`, '');
+  }
+  render();
+}
+
+function exportCSV() {
+  let csv = '﻿Дубль;Впервые сканирован;Статус в ЧЗ;Время скана;Код\n';
+  scans.forEach(s => { csv += `${s.dup ? 'ДУБЛЬ' : 'ок'};${s.first || ''};${stInfo(s.st).t.replace('⛔ ','')};${s.time};${s.key}\n`; });
+  download(csv, 'журнал_сканирования.csv', 'text/csv');
+}
+
+function exportBase() {
+  download(JSON.stringify(base), 'база_кизов_копия.json', 'application/json');
+}
+
+function importBase(el) {
+  const f = el.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let added = 0;
+    try {
+      const data = JSON.parse(reader.result);
+      Object.keys(data).forEach(k => { if (!base[k]) { base[k] = data[k]; added++; } });
+    } catch(e) {
+      // не JSON — считаем, что это просто список кодов построчно
+      String(reader.result).split(/\r?\n/).map(x => x.trim()).filter(Boolean).forEach(k => {
+        const key = normalize(k);
+        if (!base[key]) { base[key] = 'импорт'; added++; }
+      });
+    }
+    saveBase();
+    render();
+    alert('Добавлено кодов в базу: ' + added);
+  };
+  reader.readAsText(f);
+  el.value = '';
+}
+
+function download(content, name, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type: type + ';charset=utf-8' }));
+  a.download = name;
+  a.click();
+}
+
+function clearJournal() {
+  if (!confirm('Очистить журнал на экране? База кодов за все дни ОСТАНЕТСЯ — дубли будут ловиться как раньше.')) return;
+  scans = [];
+  localStorage.removeItem(LS_KEY);
+  setBanner('', 'ГОТОВ К СКАНИРОВАНИЮ', '', 'Отсканируйте первый код');
+  render();
+}
+
+function wipeAll() {
+  if (!confirm('ПОЛНЫЙ СБРОС: будут удалены и журнал, и ВСЯ база кодов за все дни. Дубли с прошлых дней перестанут определяться. Продолжить?')) return;
+  if (!confirm('Точно? Рекомендуем сначала нажать «Резервная копия базы». Удалить всё безвозвратно?')) return;
+  scans = []; base = {};
+  localStorage.removeItem(LS_KEY);
+  localStorage.removeItem(LS_BASE);
+  setBanner('', 'ГОТОВ К СКАНИРОВАНИЮ', '', 'Отсканируйте первый код');
+  render();
+}
+
+render();
+</script>
+</body>
+</html>
