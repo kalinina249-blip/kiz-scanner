@@ -120,6 +120,7 @@
     <button onclick="saveToken()">Сохранить</button>
     <button class="danger" onclick="clearToken()">✕ Очистить токен</button>
     <span id="helperDot">⚪ помощник не проверен</span>
+    <span id="refDot" style="color:#9aa0a6;font-size:13px;white-space:nowrap">📄 сверка не загружена</span>
     <a href="https://kalinina249-blip.github.io/kiz-scanner/instrukciya.html" target="_blank" style="color:#60a5fa;font-size:13px;white-space:nowrap">📖 Инструкция</a>
     <a href="https://kalinina249-blip.github.io/kiz-scanner/start-cz-helper.bat" download style="color:#60a5fa;font-size:13px;white-space:nowrap">⬇ Скачать помощник (1 файл)</a>
   </div>
@@ -145,6 +146,8 @@
     <button onclick="exportBase()">⬇ Резервная копия базы</button>
     <button onclick="document.getElementById('importFile').click()">⬆ Загрузить базу из копии</button>
     <input type="file" id="importFile" accept=".json,.txt" style="display:none" onchange="importBase(this)">
+    <button class="primary" onclick="document.getElementById('refFile').click()">⬆ Загрузить выгрузку ЧЗ (файл сверки)</button>
+    <input type="file" id="refFile" accept=".csv,.txt" style="display:none" onchange="loadRef(this)">
     <button class="danger" onclick="clearJournal()">Очистить журнал (база кодов останется)</button>
   </div>
 
@@ -211,6 +214,53 @@ if (fixedLayout) {
   localStorage.setItem(LS_KEY, JSON.stringify(scans));
 }
 
+// Файл сверки из «Честного знака»: код -> {own: наш ли ИНН, st: статус}
+const LS_REF = 'kiz-ref-v1';
+let refDB = {};
+let refCount = 0;
+try {
+  refDB = JSON.parse(localStorage.getItem(LS_REF)) || {};
+  refCount = Object.keys(refDB).length;
+} catch(e) { refDB = {}; refCount = 0; }
+
+function updateRefDot() {
+  const el = document.getElementById('refDot');
+  el.textContent = refCount ? `📄 сверка: ${refCount} кодов (${localStorage.getItem(LS_REF + '-date') || ''})` : '📄 сверка не загружена';
+}
+
+function loadRef(el) {
+  const f = el.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const db = {};
+    String(reader.result).split(/\r?\n/).forEach(line => {
+      if (!line || line.startsWith('sep=') || line.startsWith('Код;')) return;
+      const p = line.split(';');
+      if (p.length < 6) return;
+      const key = normalize(p[0]);
+      db[key] = { own: p[5].trim().toUpperCase() === 'ДА', st: (p[3] || '').trim() };
+    });
+    const n = Object.keys(db).length;
+    if (!n) { alert('В файле не нашлось кодов. Нужен CSV из выгрузки ЧЗ (все_коды_ЧЗ.csv).'); el.value = ''; return; }
+    refDB = db;
+    refCount = n;
+    const today = new Date().toLocaleDateString('ru-RU');
+    try {
+      localStorage.setItem(LS_REF, JSON.stringify(db));
+      localStorage.setItem(LS_REF + '-date', today);
+    } catch(e) {
+      localStorage.removeItem(LS_REF);
+      alert('Файл загружен (' + n + ' кодов), но он слишком большой для постоянного хранения — после закрытия страницы его нужно будет загрузить заново.');
+    }
+    updateRefDot();
+    alert('Загружено кодов для сверки: ' + n);
+    input.focus();
+  };
+  reader.readAsText(f);
+  el.value = '';
+}
+
 const input = document.getElementById('scan');
 const statusEl = document.getElementById('status');
 const tokenInput = document.getElementById('token');
@@ -224,7 +274,9 @@ const ST = {
   WITHDRAWN:   { t: '⛔ выбыл', cls: 'st-bad', bad: true },
   APPLIED:     { t: 'нанесён, не введён в оборот', cls: 'st-warn', bad: false },
   EMITTED:     { t: 'эмитирован, не введён', cls: 'st-warn', bad: false },
-  DISAGGREGATED:{ t: 'расформирован', cls: 'st-warn', bad: false }
+  DISAGGREGATED:{ t: 'расформирован', cls: 'st-warn', bad: false },
+  TRANSFERRED: { t: '⛔ ПЕРЕДАН (владелец не вы)', cls: 'st-bad', bad: true },
+  NOT_IN_REF:  { t: 'нет в выгрузке ЧЗ', cls: 'st-warn', bad: false }
 };
 function stInfo(code) {
   if (!code) return { t: '—', cls: 'st-none', bad: false };
@@ -343,8 +395,18 @@ async function onScan(raw) {
     return;
   }
 
-  // Проверка статуса в ЧЗ
+  // Проверка статуса: сначала по файлу сверки, иначе через ЧЗ по токену
   let st = rec.st;
+  let viaFile = false;
+  if (!st && refCount) {
+    const ref = refDB[key];
+    if (!ref) st = 'NOT_IN_REF';
+    else if (!ref.own) st = 'TRANSFERRED';
+    else st = ref.st || 'INTRODUCED';
+    viaFile = true;
+    rec.st = st;
+    save();
+  }
   if (!st) {
     const res = await checkCZ([key]);
     if (res === null) st = null;                    // токена нет — работаем без проверки
@@ -356,20 +418,28 @@ async function onScan(raw) {
   }
 
   const info = stInfo(st);
-  if (info.bad) {
-    setBanner('dup', '⛔ КОД ВЫВЕДЕН — ДУБЛЬ!', 'в Честном знаке: ' + info.t.replace('⛔ ', '') + ' — товар на переклейку', key);
+  const src = viaFile ? 'по выгрузке ЧЗ' : 'в Честном знаке';
+  const refOwnOk = viaFile && refDB[key] && refDB[key].own && !info.bad;
+  if (st === 'TRANSFERRED') {
+    setBanner('dup', '⛔ ПЕРЕДАН — ДУБЛЬ!', 'код числится за другим владельцем (уехал в поставке), а вещь у нас — на переклейку', key);
     beep('bad');
-  } else if (st === 'INTRODUCED') {
-    setBanner('ok', '✓ В ОБОРОТЕ', 'код новый, в Честном знаке всё чисто', key);
+  } else if (info.bad) {
+    setBanner('dup', '⛔ КОД ВЫВЕДЕН — ДУБЛЬ!', src + ': ' + info.t.replace('⛔ ', '') + ' — товар на переклейку', key);
+    beep('bad');
+  } else if (st === 'INTRODUCED' || refOwnOk) {
+    setBanner('ok', '✓ КОД ВАШ — ОК', src + ': ' + info.t, key);
     beep('ok');
+  } else if (st === 'NOT_IN_REF') {
+    setBanner('warn', '⚠ НЕТ В ВЫГРУЗКЕ', 'кода нет в файле сверки ЧЗ — отложить и проверить отдельно', key);
+    beep('warn');
   } else if (st === 'OFFLINE' || st === 'AUTH') {
     setBanner('warn', '✓ КОД НОВЫЙ', 'статус в ЧЗ не проверен: ' + info.t, key);
     beep('warn');
   } else if (st) {
-    setBanner('warn', '✓ КОД НОВЫЙ', 'статус в ЧЗ: ' + info.t, key);
+    setBanner('warn', '✓ КОД НОВЫЙ', src + ': ' + info.t, key);
     beep('warn');
   } else {
-    setBanner('ok', '✓ КОД НОВЫЙ', 'проверка ЧЗ выключена (нет токена)', key);
+    setBanner('ok', '✓ КОД НОВЫЙ', 'проверка ЧЗ выключена (нет токена и файла сверки)', key);
     beep('ok');
   }
   render();
@@ -416,6 +486,7 @@ async function pingHelper() {
 }
 pingHelper();
 setInterval(pingHelper, 30000);
+updateRefDot();
 
 // Перепроверить статусы всех кодов из базы (пачками по 100)
 async function recheckAll() {
