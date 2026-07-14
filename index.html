@@ -298,7 +298,12 @@ function stInfo(code) {
 function normalize(raw) {
   let s = translit(raw.replace(/[\x1d]/g, '|').trim());
   const m = s.match(/01(\d{14})21([^|]{1,20})/);
-  if (m) return '01' + m[1] + '21' + m[2];
+  if (m) {
+    let serial = m[2];
+    // серийник КИЗ одежды — ровно 13 символов; лишнее = хвост кода, который сканер слепил без разделителя
+    if (serial.length > 13) serial = serial.slice(0, 13);
+    return '01' + m[1] + '21' + serial;
+  }
   return s;
 }
 
