@@ -547,6 +547,13 @@ function importBase(el) {
   if (!f) return;
   const reader = new FileReader();
   reader.onload = () => {
+    // Защита: файл сверки ЧЗ сюда загружать нельзя — он сломает ловлю дублей
+    const head = String(reader.result).slice(0, 2000);
+    if (/\t(APPLIED|INTRODUCED|RETIRED|WRITTEN_OFF|WITHDRAWN|EMITTED)\t/.test(head)) {
+      alert('Это файл СВЕРКИ из Честного знака!\n\nЕго нужно загружать через синюю кнопку «⬆ Загрузить выгрузку ЧЗ (файл сверки)», а не сюда.\n\nНичего не загружено.');
+      el.value = '';
+      return;
+    }
     let added = 0;
     try {
       const data = JSON.parse(reader.result);
